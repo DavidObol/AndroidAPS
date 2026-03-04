@@ -19,5 +19,7 @@ enum class RileyLinkStringPreferenceKey(
 ) : StringPreferenceKey {
 
     MacAddress("pref_rileylink_mac_address", ""),
+    // Stores semicolon-separated list of RileyLink devices in format address|name;address2|name2;...
+    MacAddressList("pref_rileylink_mac_address_list", ""),
     Encoding("pref_medtronic_encoding", "medtronic_pump_encoding_4b6b_rileylink"),
 }

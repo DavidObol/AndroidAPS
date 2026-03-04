@@ -126,6 +126,17 @@ class RileyLinkMedtronicService : RileyLinkService() {
     val isInitialized: Boolean
         get() = rileyLinkServiceData.rileyLinkServiceState.isReady()
 
+    private fun hasMultipleRileyLinks(): Boolean {
+        val raw = preferences.get(RileyLinkStringPreferenceKey.MacAddressList)
+        if (raw.isBlank()) return false
+        var count = 0
+        raw.split(";").forEach { entry ->
+            val addr = entry.trim().split("|", limit = 2).firstOrNull()?.trim()
+            if (!addr.isNullOrEmpty()) count++
+        }
+        return count >= 2
+    }
+
     override fun verifyConfiguration(forceRileyLinkAddressRenewal: Boolean): Boolean {
         return try {
             val regexSN = "[0-9]{6}"
@@ -157,6 +168,7 @@ class RileyLinkMedtronicService : RileyLinkService() {
                     if (pumpTypePart.startsWith("7")) medtronicPumpStatus.reservoirFullUnits = 300 else medtronicPumpStatus.reservoirFullUnits = 176
                 }
             }
+
             rileyLinkServiceData.rileyLinkTargetFrequency = RileyLinkTargetFrequency.getByKey(preferences.get(MedtronicStringPreferenceKey.PumpFrequency))
             val rileyLinkAddress = preferences.get(RileyLinkStringPreferenceKey.MacAddress)
             if (rileyLinkAddress.isEmpty()) {
@@ -235,6 +247,10 @@ class RileyLinkMedtronicService : RileyLinkService() {
     }
 
     fun setNotInPreInit(): Boolean {
+        if (inPreInit && hasMultipleRileyLinks()) {
+            aapsLogger.debug(LTag.PUMPBTCOMM, "Multiple RileyLinks configured: requesting selection via broadcast (non-blocking)")
+            rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkNewAddressSet)
+        }
         inPreInit = false
         return reconfigureService(false)
     }
