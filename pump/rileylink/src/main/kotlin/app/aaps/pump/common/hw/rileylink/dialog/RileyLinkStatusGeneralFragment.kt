@@ -12,6 +12,7 @@ import app.aaps.pump.common.hw.rileylink.R
 import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusGeneralBinding
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
+import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
 import app.aaps.pump.common.hw.rileylink.keys.RileylinkBooleanPreferenceKey
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import dagger.android.support.DaggerFragment
@@ -88,6 +89,16 @@ class RileyLinkStatusGeneralFragment : DaggerFragment() {
         val lastConnectionTimeMillis = rileyLinkPumpDevice.lastConnectionTimeMillis
         if (lastConnectionTimeMillis == 0L) binding.lastDeviceContact.text = rh.gs(R.string.riley_link_ble_config_connected_never)
         else binding.lastDeviceContact.text = dateUtil.dateAndTimeAndSecondsString(lastConnectionTimeMillis)
+        val secondary = preferences.get(RileyLinkStringPreferenceKey.MacAddressSecondary).trim()
+        if (secondary.isNotEmpty()) {
+            binding.dualRileyLinkRow.visibility = View.VISIBLE
+            val lastUsed = preferences.get(RileyLinkStringPreferenceKey.LastSuccessfulRileyLinkAddress).trim()
+            binding.lastUsedRileyLinkAddress.text = lastUsed.ifEmpty { EMPTY }
+            val rssi = rileyLinkServiceData.lastRssiByAddress[rileyLinkServiceData.rileyLinkAddress]
+            binding.rileyLinkRssi.text = rssi?.toString() ?: EMPTY
+        } else {
+            binding.dualRileyLinkRow.visibility = View.GONE
+        }
     }
 
     companion object {

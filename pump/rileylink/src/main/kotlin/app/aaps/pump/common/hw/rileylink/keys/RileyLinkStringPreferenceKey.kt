@@ -19,5 +19,7 @@ enum class RileyLinkStringPreferenceKey(
 ) : StringPreferenceKey {
 
     MacAddress("pref_rileylink_mac_address", ""),
+    MacAddressSecondary("pref_rileylink_mac_address_secondary", ""),
+    LastSuccessfulRileyLinkAddress("AAPS.RileyLink.lastSuccessfulRileyLinkAddress", ""),
     Encoding("pref_medtronic_encoding", "medtronic_pump_encoding_4b6b_rileylink"),
 }

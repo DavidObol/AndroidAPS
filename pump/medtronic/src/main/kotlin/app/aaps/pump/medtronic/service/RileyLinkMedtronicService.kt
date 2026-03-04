@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Binder
 import android.os.IBinder
+import app.aaps.core.interfaces.logging.AapsDirectoryLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.utils.pump.ByteUtil
@@ -14,7 +15,9 @@ import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringKey
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
 import app.aaps.pump.common.hw.rileylink.keys.RileylinkBooleanPreferenceKey
+import app.aaps.pump.common.hw.rileylink.service.RileyLinkConnectionSwitcher
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkService
+import app.aaps.pump.common.hw.rileylink.service.RileyLinkSwitcherHolder
 import app.aaps.pump.medtronic.MedtronicPumpPlugin
 import app.aaps.pump.medtronic.R
 import app.aaps.pump.medtronic.comm.MedtronicCommunicationManager
@@ -32,13 +35,15 @@ import javax.inject.Singleton
  * RileyLinkMedtronicService is intended to stay running when the gui-app is closed.
  */
 @Singleton
-class RileyLinkMedtronicService : RileyLinkService() {
+class RileyLinkMedtronicService : RileyLinkService(), RileyLinkConnectionSwitcher {
 
     @Inject lateinit var medtronicPumpPlugin: MedtronicPumpPlugin
+    @Inject lateinit var rileyLinkSwitcherHolder: RileyLinkSwitcherHolder
     @Inject lateinit var medtronicUtil: MedtronicUtil
     @Inject lateinit var medtronicPumpStatus: MedtronicPumpStatus
     @Inject lateinit var medtronicCommunicationManager: MedtronicCommunicationManager
     @Inject lateinit var medtronicUIComm: MedtronicUIComm
+    @Inject lateinit var aapsDirectoryLogger: AapsDirectoryLogger
 
     private val mBinder: IBinder = LocalBinder()
     private var serialChanged = false
@@ -59,7 +64,23 @@ class RileyLinkMedtronicService : RileyLinkService() {
     }
 
     override fun onBind(intent: Intent): IBinder {
+        rileyLinkSwitcherHolder.switcher = this
         return mBinder
+    }
+
+    override fun onUnbind(intent: Intent): Boolean {
+        rileyLinkSwitcherHolder.switcher = null
+        return super.onUnbind(intent)
+    }
+
+    override fun switchTo(address: String): Boolean {
+        if (address.isEmpty()) {
+            aapsDirectoryLogger.log("DualRL", "switchTo: empty address, skip")
+            return false
+        }
+        aapsDirectoryLogger.log("DualRL", "switchTo: reconfiguring to address=$address")
+        reconfigureRileyLink(address)
+        return true
     }
 
     override val encoding: RileyLinkEncodingType
@@ -72,8 +93,16 @@ class RileyLinkMedtronicService : RileyLinkService() {
         rileyLinkServiceData.targetDevice = RileyLinkTargetDevice.MedtronicPump
         setPumpIDString(preferences.get(MedtronicStringPreferenceKey.Serial))
 
-        // get most recently used RileyLink address and name
-        rileyLinkServiceData.rileyLinkAddress = preferences.get(RileyLinkStringPreferenceKey.MacAddress)
+        // Prefer last successfully used RileyLink when two are configured; otherwise primary
+        val lastSuccessful = preferences.get(RileyLinkStringPreferenceKey.LastSuccessfulRileyLinkAddress).trim()
+        val primary = preferences.get(RileyLinkStringPreferenceKey.MacAddress).trim()
+        val secondary = preferences.get(RileyLinkStringPreferenceKey.MacAddressSecondary).trim()
+        val initialAddress = when {
+            lastSuccessful.isNotEmpty() && (lastSuccessful == primary || lastSuccessful == secondary) -> lastSuccessful
+            else -> primary
+        }
+        aapsDirectoryLogger.log("DualRL", "initRileyLinkServiceData: primary=$primary secondary=$secondary lastSuccessful=$lastSuccessful -> initialAddress=$initialAddress")
+        rileyLinkServiceData.rileyLinkAddress = initialAddress
         rileyLinkServiceData.rileyLinkName = preferences.get(RileyLinkStringKey.Name)
         rfSpy.startReader()
         aapsLogger.debug(LTag.PUMPCOMM, "RileyLinkMedtronicService newly constructed")

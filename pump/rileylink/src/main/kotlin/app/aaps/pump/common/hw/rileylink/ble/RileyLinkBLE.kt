@@ -432,6 +432,11 @@ class RileyLinkBLE @Inject constructor(
 
             override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
                 super.onReadRemoteRssi(gatt, rssi, status)
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    gatt.device?.address?.let { addr ->
+                        rileyLinkServiceData.lastRssiByAddress[addr] = rssi
+                    }
+                }
                 if (gattDebugEnabled)
                     aapsLogger.warn(LTag.PUMPBTCOMM, "onReadRemoteRssi " + getGattStatusMessage(status) + ": " + rssi)
             }
@@ -466,6 +471,7 @@ class RileyLinkBLE @Inject constructor(
                     aapsLogger.info(LTag.PUMPBTCOMM, "Gatt device is RileyLink device: $rileyLinkFound")
                     if (rileyLinkFound) {
                         isConnected = true
+                        bluetoothConnectionGatt?.readRemoteRssi()
                         rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkReady)
                     } else {
                         isConnected = false

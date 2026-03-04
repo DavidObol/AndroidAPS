@@ -55,6 +55,7 @@ class FileListProviderImpl @Inject constructor(
     val exportsPath = "exports"
     val tempPath = "temp"
     val extraPath = "extra"
+    val logsPath = "logs"
 
     companion object {
 
@@ -162,6 +163,14 @@ class FileListProviderImpl @Inject constructor(
         val baseDir = DocumentFile.fromTreeUri(context, uri)
         val files = baseDir?.listFiles()
         return files?.firstOrNull { it.name == extraPath } ?: baseDir?.createDirectory(extraPath)
+    }
+
+    override fun ensureLogsDirExists(): DocumentFile? {
+        val prefUri = preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return null
+        val uri = Uri.parse(prefUri)
+        val baseDir = DocumentFile.fromTreeUri(context, uri)
+        val files = baseDir?.listFiles()
+        return files?.firstOrNull { it.name == logsPath } ?: baseDir?.createDirectory(logsPath)
     }
 
     override fun ensureResultDirExists(): File {

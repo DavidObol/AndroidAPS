@@ -3,6 +3,7 @@ package app.aaps.pump.medtronic.comm
 import android.os.SystemClock
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.AapsDirectoryLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
@@ -14,10 +15,13 @@ import app.aaps.pump.common.hw.rileylink.RileyLinkUtil
 import app.aaps.pump.common.hw.rileylink.ble.RFSpy
 import app.aaps.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
 import app.aaps.pump.common.hw.rileylink.ble.data.RadioPacket
+import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkBLEError
 import app.aaps.pump.common.hw.rileylink.ble.data.RadioResponse
 import app.aaps.pump.common.hw.rileylink.ble.defs.RLMessageType
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkLongKey
+import app.aaps.pump.common.hw.rileylink.service.RileyLinkSelector
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
+import app.aaps.pump.common.hw.rileylink.service.RileyLinkSwitcherHolder
 import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
 import app.aaps.pump.common.hw.rileylink.service.tasks.WakeAndTuneTask
 import app.aaps.pump.medtronic.MedtronicPumpPlugin
@@ -67,6 +71,9 @@ class MedtronicCommunicationManager @Inject constructor(
     private val medtronicConverter: MedtronicConverter,
     private val medtronicUtil: MedtronicUtil,
     private val medtronicPumpHistoryDecoder: MedtronicPumpHistoryDecoder,
+    private val rileyLinkSelector: RileyLinkSelector,
+    private val rileyLinkSwitcherHolder: RileyLinkSwitcherHolder,
+    private val aapsDirectoryLogger: AapsDirectoryLogger,
     aapsLogger: AAPSLogger,
     preferences: Preferences,
     rileyLinkServiceData: RileyLinkServiceData,
@@ -85,6 +92,8 @@ class MedtronicCommunicationManager @Inject constructor(
         private const val MAX_COMMAND_TRIES = 3
         private const val DEFAULT_TIMEOUT = 2000
         private const val RILEYLINK_TIMEOUT: Long = 15 * 60 * 1000L // 15 min
+        private const val RILEYLINK_SWITCH_DELAY_MS = 2500L
+        private const val DUAL_RL_LOG_TAG = "DualRL"
     }
 
     var errorResponse: String? = null
@@ -96,6 +105,40 @@ class MedtronicCommunicationManager @Inject constructor(
     fun onInit() {
         // we can't do this in the constructor, as sp only gets injected after the constructor has returned
         medtronicPumpStatus.previousConnection = preferences.get(RileyLinkLongKey.LastGoodDeviceCommunicationTime)
+    }
+
+    @Throws(RileyLinkCommunicationException::class)
+    override fun sendAndListen(msg: PumpMessage, timeoutMs: Int, repeatCount: Int, retryCount: Int, extendPreambleMs: Int): PumpMessage {
+        val orderedAddresses = rileyLinkSelector.getOrderedAddresses()
+        if (orderedAddresses.isEmpty()) {
+            aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: no ordered addresses, using single RL path")
+            return super.sendAndListen(msg, timeoutMs, repeatCount, retryCount, extendPreambleMs)
+        }
+        aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: trying ${orderedAddresses.size} RL(s): ${orderedAddresses.joinToString(",")}")
+        var lastException: RileyLinkCommunicationException? = null
+        for ((index, address) in orderedAddresses.withIndex()) {
+            val currentAddress = rileyLinkServiceData.rileyLinkAddress
+            aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: attempt ${index + 1}/${orderedAddresses.size} address=$address current=$currentAddress")
+            if (currentAddress != address) {
+                aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: switching to $address (current: $currentAddress), waiting ${RILEYLINK_SWITCH_DELAY_MS}ms")
+                aapsLogger.info(LTag.PUMPCOMM, "Dual RileyLink: switching to $address (current: $currentAddress)")
+                rileyLinkSwitcherHolder.switcher?.switchTo(address)
+                SystemClock.sleep(RILEYLINK_SWITCH_DELAY_MS)
+            }
+            try {
+                val result = super.sendAndListen(msg, timeoutMs, repeatCount, retryCount, extendPreambleMs)
+                val usedAddress = rileyLinkServiceData.rileyLinkAddress ?: address
+                rileyLinkSelector.rememberLastSuccessfulAddress(usedAddress)
+                aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: success with address=$usedAddress")
+                return result
+            } catch (e: RileyLinkCommunicationException) {
+                lastException = e
+                aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: failed address=$address error=${e.message}")
+                aapsLogger.warn(LTag.PUMPCOMM, "Dual RileyLink: failed with $address: ${e.message}, trying next")
+            }
+        }
+        aapsDirectoryLogger.log(DUAL_RL_LOG_TAG, "sendAndListen: all ${orderedAddresses.size} attempts failed, lastError=${lastException?.message}")
+        throw lastException ?: RileyLinkCommunicationException(RileyLinkBLEError.NoResponse, null)
     }
 
     override fun createResponseMessage(payload: ByteArray): PumpMessage {

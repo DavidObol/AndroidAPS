@@ -42,6 +42,9 @@ class RileyLinkServiceData @Inject constructor(
     var lastTuneUpTime = 0L
     var lastGoodFrequency: Double? = null
 
+    /** RSSI per RileyLink address (updated when connected); used to order by BLE quality when no last-successful. */
+    val lastRssiByAddress: MutableMap<String, Int> = mutableMapOf()
+
     // bt version
     var versionBLE113: String? = null
 

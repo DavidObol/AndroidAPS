@@ -2,6 +2,7 @@ package app.aaps.plugins.configuration.di
 
 import app.aaps.core.interfaces.androidPermissions.AndroidPermission
 import app.aaps.core.interfaces.configuration.ConfigBuilder
+import app.aaps.core.interfaces.logging.AapsDirectoryLogger
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
@@ -10,6 +11,7 @@ import app.aaps.plugins.configuration.activities.SingleFragmentActivity
 import app.aaps.plugins.configuration.configBuilder.ConfigBuilderFragment
 import app.aaps.plugins.configuration.configBuilder.ConfigBuilderPlugin
 import app.aaps.plugins.configuration.configBuilder.RunningConfigurationImpl
+import app.aaps.plugins.configuration.maintenance.AapsDirectoryLoggerImpl
 import app.aaps.plugins.configuration.maintenance.FileListProviderImpl
 import app.aaps.plugins.configuration.maintenance.ImportExportPrefsImpl
 import app.aaps.plugins.configuration.maintenance.MaintenanceFragment
@@ -45,6 +47,7 @@ abstract class ConfigurationModule {
     interface Bindings {
 
         @Binds fun bindAndroidPermissionInterface(androidPermission: AndroidPermissionImpl): AndroidPermission
+        @Binds fun bindAapsDirectoryLogger(impl: AapsDirectoryLoggerImpl): AapsDirectoryLogger
         @Binds fun bindPrefFileListProvider(prefFileListProviderImpl: FileListProviderImpl): FileListProvider
         @Binds fun bindRunningConfiguration(runningConfigurationImpl: RunningConfigurationImpl): RunningConfiguration
         @Binds fun bindConfigBuilderInterface(configBuilderPlugin: ConfigBuilderPlugin): ConfigBuilder

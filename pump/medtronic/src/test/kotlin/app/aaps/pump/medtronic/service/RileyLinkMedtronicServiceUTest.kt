@@ -1,5 +1,6 @@
 package app.aaps.pump.medtronic.service
 
+import app.aaps.core.interfaces.logging.AapsDirectoryLogger
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.pump.common.hw.rileylink.RileyLinkUtil
 import app.aaps.pump.common.hw.rileylink.ble.RFSpy
@@ -8,6 +9,7 @@ import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringKey
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
 import app.aaps.pump.common.hw.rileylink.keys.RileylinkBooleanPreferenceKey
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
+import app.aaps.pump.common.hw.rileylink.service.RileyLinkSwitcherHolder
 import app.aaps.pump.medtronic.MedtronicPumpPlugin
 import app.aaps.pump.medtronic.R
 import app.aaps.pump.medtronic.comm.MedtronicCommunicationManager
@@ -38,6 +40,8 @@ class RileyLinkMedtronicServiceUTest : TestBaseWithProfile() {
     @Mock lateinit var medtronicCommunicationManager: MedtronicCommunicationManager
     @Mock lateinit var medtronicUIComm: MedtronicUIComm
     @Mock lateinit var rfSpy: RFSpy
+    @Mock lateinit var rileyLinkSwitcherHolder: RileyLinkSwitcherHolder
+    @Mock lateinit var aapsDirectoryLogger: AapsDirectoryLogger
 
     lateinit var service: RileyLinkMedtronicService
     lateinit var medtronicPumpStatus: MedtronicPumpStatus
@@ -64,6 +68,8 @@ class RileyLinkMedtronicServiceUTest : TestBaseWithProfile() {
             it.rileyLinkServiceData = rileyLinkServiceData
             it.rileyLinkUtil = rileyLinkUtil
             it.rfSpy = rfSpy
+            it.rileyLinkSwitcherHolder = rileyLinkSwitcherHolder
+            it.aapsDirectoryLogger = aapsDirectoryLogger
         }
         // Setup common mock behaviors
         doReturn("").whenever(rh).gs(any<Int>())

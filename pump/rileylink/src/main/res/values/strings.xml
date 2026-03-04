@@ -30,6 +30,11 @@
     <string name="riley_link_ble_config_remove_riley_link_confirmation">Are you sure that you want to remove your RileyLink?</string>
     <string name="riley_link_ble_config_remove_riley_link_confirmation_title">Remove RileyLink</string>
     <string name="riley_link_ble_config_no_riley_link_selected">No RileyLink selected</string>
+    <string name="riley_link_ble_config_riley_link_1">RileyLink 1</string>
+    <string name="riley_link_ble_config_riley_link_2_optional">RileyLink 2 (optional)</string>
+    <string name="riley_link_ble_config_set_as_riley_link_1">Set as RileyLink 1</string>
+    <string name="riley_link_ble_config_set_as_riley_link_2">Set as RileyLink 2</string>
+    <string name="riley_link_ble_config_remove_riley_link_2_confirmation">Remove RileyLink 2?</string>
 
     <!-- RL Status Page -->
     <string name="rileylink_settings_tab1">Settings</string>
@@ -50,6 +55,8 @@
     <string name="rileylink_connected_device_model">Connected Device Model:</string>
     <string name="rileylink_last_used_frequency">Last Used Frequency:</string>
     <string name="rileylink_last_device_contact">Last Device Contact:</string>
+    <string name="rileylink_last_used_riley_link">Last used RileyLink:</string>
+    <string name="rileylink_rssi">RSSI:</string>
     <string name="rileylink_firmware_version">Firmware Version:</string>
     <string name="rileylink_firmware_version_value">BLE113: %1$s\nCC110: %2$s</string>
     <string name="rileylink_firmware_version_value_orange">Fw: %1$s\nHw: %2$s</string>
