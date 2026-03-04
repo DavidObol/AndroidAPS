@@ -88,6 +88,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
             val bleAddress = view.findViewById<TextView>(R.id.riley_link_ble_config_scan_item_device_address)?.text.toString()
             val deviceName = view.findViewById<TextView>(R.id.riley_link_ble_config_scan_item_device_name)?.text.toString()
+            addRileyLinkToSavedList(bleAddress, deviceName)
             preferences.put(RileyLinkStringPreferenceKey.MacAddress, bleAddress)
             preferences.put(RileyLinkStringKey.Name, deviceName)
             val rileyLinkPump = activePlugin.activePump as RileyLinkPumpDevice
@@ -114,6 +115,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
                 {
                     rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkDisconnect)
                     preferences.remove(RileyLinkStringPreferenceKey.MacAddress)
+                    preferences.remove(RileyLinkStringPreferenceKey.MacAddressList)
                     preferences.remove(RileyLinkStringKey.Name)
                     updateCurrentlySelectedRileyLink()
                 })
@@ -132,6 +134,43 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
             binding.rileyLinkBleConfigCurrentlySelectedRileyLinkName.text = preferences.get(RileyLinkStringKey.Name)
             binding.rileyLinkBleConfigCurrentlySelectedRileyLinkAddress.text = address
         }
+    }
+
+    private fun getSavedRileyLinks(): MutableMap<String, String> {
+        val result: MutableMap<String, String> = LinkedHashMap()
+        val raw = preferences.get(RileyLinkStringPreferenceKey.MacAddressList)
+        if (raw.isBlank()) return result
+        raw.split(";")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .forEach { entry ->
+                val parts = entry.split("|", limit = 2)
+                if (parts.isNotEmpty()) {
+                    val addr = parts[0].trim()
+                    if (addr.isNotEmpty()) {
+                        val name = if (parts.size > 1) parts[1].trim() else ""
+                        result[addr] = name
+                    }
+                }
+            }
+        return result
+    }
+
+    private fun saveSavedRileyLinks(devices: Map<String, String>) {
+        if (devices.isEmpty()) {
+            preferences.put(RileyLinkStringPreferenceKey.MacAddressList, "")
+            return
+        }
+        val serialized = devices.entries.joinToString(";") { (addr, name) ->
+            if (name.isNotBlank()) "$addr|$name" else addr
+        }
+        preferences.put(RileyLinkStringPreferenceKey.MacAddressList, serialized)
+    }
+
+    private fun addRileyLinkToSavedList(address: String, name: String) {
+        val devices = getSavedRileyLinks()
+        devices[address] = name
+        saveSavedRileyLinks(devices)
     }
 
     override fun onResume() {
