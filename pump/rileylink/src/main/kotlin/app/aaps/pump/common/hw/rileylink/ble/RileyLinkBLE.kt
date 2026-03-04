@@ -33,6 +33,7 @@ import app.aaps.pump.common.hw.rileylink.defs.RileyLinkError
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkServiceState
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringKey
 import app.aaps.pump.common.hw.rileylink.keys.RileylinkBooleanPreferenceKey
+import app.aaps.pump.common.hw.rileylink.service.RileyLinkInteractionLogger
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import org.apache.commons.lang3.StringUtils
 import java.util.Locale
@@ -53,7 +54,8 @@ class RileyLinkBLE @Inject constructor(
     private val rileyLinkUtil: RileyLinkUtil,
     private val preferences: Preferences,
     private val orangeLink: OrangeLinkImpl,
-    private val config: Config
+    private val config: Config,
+    private val interactionLogger: RileyLinkInteractionLogger
 ) {
 
     private val gattDebugEnabled = true
@@ -139,18 +141,22 @@ class RileyLinkBLE @Inject constructor(
     }
 
     fun findRileyLink(rileyLinkAddress: String) {
+        interactionLogger.log("BLE_FIND_RILEYLINK", "address=$rileyLinkAddress")
         aapsLogger.debug(LTag.PUMPBTCOMM, "RileyLink address: $rileyLinkAddress")
-        // Must verify that this is a valid MAC, or crash.
-        //macAddress = RileyLinkAddress;
         val useScanning = preferences.get(RileylinkBooleanPreferenceKey.OrangeUseScanning)
         if (useScanning) {
+            interactionLogger.log("BLE_ORANGE_SCAN", "starting OrangeLink scan")
             aapsLogger.debug(LTag.PUMPBTCOMM, "Start scan for OrangeLink device.")
             orangeLink.startScan()
         } else {
             rileyLinkDevice = bluetoothAdapter?.getRemoteDevice(rileyLinkAddress)
-            // if this succeeds, we get a connection state change callback?
-            if (rileyLinkDevice != null) connectGattInternal()
-            else aapsLogger.error(LTag.PUMPBTCOMM, "RileyLink device not found with address: $rileyLinkAddress")
+            if (rileyLinkDevice != null) {
+                interactionLogger.log("BLE_CONNECT_GATT", "calling connectGattInternal for $rileyLinkAddress")
+                connectGattInternal()
+            } else {
+                interactionLogger.log("BLE_ERROR", "device null for address=$rileyLinkAddress")
+                aapsLogger.error(LTag.PUMPBTCOMM, "RileyLink device not found with address: $rileyLinkAddress")
+            }
         }
     }
 
@@ -192,11 +198,10 @@ class RileyLinkBLE @Inject constructor(
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
+        interactionLogger.log("BLE_DISCONNECT", "isConnected=$isConnected gatt=${bluetoothConnectionGatt != null}")
         isConnected = false
         aapsLogger.warn(LTag.PUMPBTCOMM, "Closing GATT connection")
-        // Close old connection
         if (bluetoothConnectionGatt != null) {
-            // Not sure if to disconnect or to close first..
             bluetoothConnectionGatt?.disconnect()
             manualDisconnect = true
         }
@@ -395,11 +400,13 @@ class RileyLinkBLE @Inject constructor(
                     aapsLogger.warn(LTag.PUMPBTCOMM, "onConnectionStateChange " + getGattStatusMessage(status) + " " + stateMessage)
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    interactionLogger.log("BLE_STATE_CONNECTED", "status=$status device=${gatt.device?.address}")
                     if (status == BluetoothGatt.GATT_SUCCESS) rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.BluetoothConnected)
                     else aapsLogger.debug(LTag.PUMPBTCOMM, "BT State connected, GATT status $status (${getGattStatusMessage(status)})")
                 } else if (newState == BluetoothProfile.STATE_CONNECTING || newState == BluetoothProfile.STATE_DISCONNECTING) {
                     aapsLogger.debug(LTag.PUMPBTCOMM, "We are in ${if (status == BluetoothProfile.STATE_CONNECTING) "Connecting" else "Disconnecting"} state.")
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    interactionLogger.log("BLE_STATE_DISCONNECTED", "status=$status manualDisconnect=$manualDisconnect")
                     rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkDisconnected)
                     if (manualDisconnect) close()
                     aapsLogger.warn(LTag.PUMPBTCOMM, "RileyLink Disconnected.")

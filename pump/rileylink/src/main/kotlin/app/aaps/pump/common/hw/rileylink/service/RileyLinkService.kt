@@ -37,6 +37,7 @@ abstract class RileyLinkService : DaggerService() {
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var rileyLinkBLE: RileyLinkBLE     // android-bluetooth management
     @Inject lateinit var rfSpy: RFSpy // interface for RL xxx Mhz radio.
+    @Inject lateinit var interactionLogger: RileyLinkInteractionLogger
 
     private val bluetoothAdapter: BluetoothAdapter? get() = (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager?)?.adapter
     private var broadcastReceiver: RileyLinkBroadcastReceiver? = null
@@ -96,29 +97,34 @@ abstract class RileyLinkService : DaggerService() {
 
     // returns true if our Rileylink configuration changed
     fun reconfigureRileyLink(deviceAddress: String): Boolean {
+        interactionLogger.log("RECONFIGURE_ENTER", "address=$deviceAddress connected=${rileyLinkBLE.isConnected} current=${rileyLinkServiceData.rileyLinkAddress}")
         rileyLinkServiceData.setServiceState(RileyLinkServiceState.RileyLinkInitializing)
         return if (rileyLinkBLE.isConnected) {
             if (deviceAddress == rileyLinkServiceData.rileyLinkAddress) {
+                interactionLogger.log("RECONFIGURE_NO_CHANGE", "address=$deviceAddress")
                 aapsLogger.info(LTag.PUMPBTCOMM, "No change to RL address.  Not reconnecting.")
                 false
             } else {
+                interactionLogger.log("RECONFIGURE_SWITCH", "from=${rileyLinkServiceData.rileyLinkAddress} to=$deviceAddress")
                 aapsLogger.warn(LTag.PUMPBTCOMM, "Disconnecting from old RL (${rileyLinkServiceData.rileyLinkAddress}), reconnecting to new: $deviceAddress")
                 rileyLinkBLE.disconnect()
-                // need to shut down listening thread too?
-                // preferences.put(MedtronicConst.Prefs.RileyLinkAddress, deviceAddress);
                 rileyLinkServiceData.rileyLinkAddress = deviceAddress
                 rileyLinkBLE.findRileyLink(deviceAddress)
+                interactionLogger.log("RECONFIGURE_FIND_CALLED", "findRileyLink($deviceAddress)")
                 true
             }
         } else {
+            interactionLogger.log("RECONFIGURE_CONNECT", "address=$deviceAddress (was not connected)")
             aapsLogger.debug(LTag.PUMPBTCOMM, "Using RL $deviceAddress")
             if (rileyLinkServiceData.rileyLinkServiceState == RileyLinkServiceState.NotStarted) {
                 if (!bluetoothInit()) {
+                    interactionLogger.log("RECONFIGURE_ERROR", "bluetoothInit failed")
                     aapsLogger.error("RileyLink can't get activated, Bluetooth is not functioning correctly. ${rileyLinkServiceData.rileyLinkError?.name ?: "Unknown error (null)"}")
                     return false
                 }
             }
             rileyLinkBLE.findRileyLink(deviceAddress)
+            interactionLogger.log("RECONFIGURE_FIND_CALLED", "findRileyLink($deviceAddress)")
             true
         }
     }
@@ -147,6 +153,7 @@ abstract class RileyLinkService : DaggerService() {
 
     abstract fun setPumpDeviceState(pumpDeviceState: PumpDeviceState)
     fun disconnectRileyLink() {
+        interactionLogger.log("DISCONNECT_RILEYLINK", "connected=${rileyLinkBLE.isConnected}")
         if (rileyLinkBLE.isConnected) {
             rileyLinkBLE.disconnect()
             rileyLinkServiceData.rileyLinkAddress = null

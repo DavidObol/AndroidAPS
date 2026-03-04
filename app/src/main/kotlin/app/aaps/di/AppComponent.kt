@@ -86,6 +86,7 @@ import javax.inject.Singleton
         OmnipodErosModule::class,
         PumpCommonModule::class,
         RileyLinkModule::class,
+        app.aaps.pump.common.di.RileyLinkProviderModule::class,
         MedtrumModule::class,
         EquilModule::class,
         VirtualPumpModule::class
