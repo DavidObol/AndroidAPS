@@ -1,15 +1,26 @@
 package app.aaps.pump.medtronic.service
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Binder
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.defs.PumpDeviceState
 import app.aaps.core.utils.pump.ByteUtil
+import app.aaps.pump.common.hw.rileylink.ble.data.GattAttributes
 import app.aaps.pump.common.hw.rileylink.RileyLinkConst
 import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkEncodingType
 import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
+import app.aaps.pump.common.hw.rileylink.data.RLHistoryItemRileyLinkSelection
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringKey
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
@@ -126,6 +137,127 @@ class RileyLinkMedtronicService : RileyLinkService() {
     val isInitialized: Boolean
         get() = rileyLinkServiceData.rileyLinkServiceState.isReady()
 
+    private fun autoSelectBestRileyLinkIfConfigured() {
+        val knownDevicesRaw = preferences.get(RileyLinkStringPreferenceKey.MacAddressList)
+        val knownDevices: MutableMap<String, String> = LinkedHashMap()
+        if (knownDevicesRaw.isNotBlank()) {
+            knownDevicesRaw.split(";")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .forEach { entry ->
+                    val parts = entry.split("|", limit = 2)
+                    if (parts.isNotEmpty()) {
+                        val addr = parts[0].trim()
+                        if (addr.isNotEmpty()) {
+                            val name = if (parts.size > 1) parts[1].trim() else ""
+                            knownDevices[addr] = name
+                        }
+                    }
+                }
+        }
+
+        if (knownDevices.size <= 1) {
+            // Нечего выбирать – либо одно устройство, либо ни одного.
+            return
+        }
+
+        val bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter: BluetoothAdapter? = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            aapsLogger.debug(LTag.PUMPBTCOMM, "autoSelectBestRileyLinkIfConfigured: Bluetooth adapter not available or disabled")
+            return
+        }
+
+        val hasScanPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasScanPermission) {
+            aapsLogger.debug(LTag.PUMPBTCOMM, "autoSelectBestRileyLinkIfConfigured: BLUETOOTH_SCAN permission not granted")
+            return
+        }
+
+        val scanner: BluetoothLeScanner? = adapter.bluetoothLeScanner
+        if (scanner == null) {
+            aapsLogger.debug(LTag.PUMPBTCOMM, "autoSelectBestRileyLinkIfConfigured: BluetoothLeScanner is null")
+            return
+        }
+
+        val rssiByAddress: MutableMap<String, Int> = HashMap()
+        val scanSettings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        val filters = listOf(
+            ScanFilter.Builder().setServiceUuid(
+                android.os.ParcelUuid.fromString(GattAttributes.SERVICE_RADIO)
+            ).build()
+        )
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                handleResult(result)
+            }
+
+            override fun onBatchScanResults(results: MutableList<ScanResult>) {
+                for (result in results) {
+                    handleResult(result)
+                }
+            }
+
+            private fun handleResult(result: ScanResult) {
+                val addr = result.device.address
+                if (knownDevices.containsKey(addr)) {
+                    val current = rssiByAddress[addr]
+                    val rssi = result.rssi
+                    if (current == null || rssi > current) {
+                        rssiByAddress[addr] = rssi
+                    }
+                }
+            }
+        }
+
+        try {
+            scanner.startScan(filters, scanSettings, callback)
+            aapsLogger.debug(LTag.PUMPBTCOMM, "autoSelectBestRileyLinkIfConfigured: started scan")
+            Thread.sleep(3_000L)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.PUMPBTCOMM, "autoSelectBestRileyLinkIfConfigured: exception during scan", e)
+        } finally {
+            try {
+                scanner.stopScan(callback)
+            } catch (_: Exception) {
+            }
+        }
+
+        val selectedAddress: String?
+        val selectedRssi: Int?
+        if (rssiByAddress.isNotEmpty()) {
+            val best = rssiByAddress.entries.maxByOrNull { it.value }!!
+            selectedAddress = best.key
+            selectedRssi = best.value
+        } else {
+            // Ни одно из сохранённых устройств не увидели, выходим, не меняя текущий MacAddress.
+            aapsLogger.debug(LTag.PUMPBTCOMM, "autoSelectBestRileyLinkIfConfigured: no known RL seen during scan")
+            return
+        }
+
+        val currentAddress = preferences.get(RileyLinkStringPreferenceKey.MacAddress)
+        if (selectedAddress == null || selectedAddress == currentAddress) {
+            // Уже выбрано оптимальное устройство.
+            return
+        }
+
+        val selectedName = knownDevices[selectedAddress] ?: ""
+        preferences.put(RileyLinkStringPreferenceKey.MacAddress, selectedAddress)
+        if (selectedName.isNotBlank()) {
+            preferences.put(RileyLinkStringKey.Name, selectedName)
+        }
+
+        val msg = "Medtronic auto-selected RileyLink $selectedName ($selectedAddress), RSSI=$selectedRssi among ${knownDevices.size} device(s)"
+        rileyLinkUtil.rileyLinkHistory.add(RLHistoryItemRileyLinkSelection(msg, RileyLinkTargetDevice.MedtronicPump))
+        aapsLogger.info(LTag.PUMPBTCOMM, msg)
+
+        // Отметим, что адрес изменился, чтобы reconfigureService инициировал реконнект.
+        rileyLinkAddress = selectedAddress
+        rileyLinkAddressChanged = true
+    }
+
     override fun verifyConfiguration(forceRileyLinkAddressRenewal: Boolean): Boolean {
         return try {
             val regexSN = "[0-9]{6}"
@@ -157,6 +289,10 @@ class RileyLinkMedtronicService : RileyLinkService() {
                     if (pumpTypePart.startsWith("7")) medtronicPumpStatus.reservoirFullUnits = 300 else medtronicPumpStatus.reservoirFullUnits = 176
                 }
             }
+
+            // If multiple RileyLinks are configured, try to auto-select the best one by RSSI
+            autoSelectBestRileyLinkIfConfigured()
+
             rileyLinkServiceData.rileyLinkTargetFrequency = RileyLinkTargetFrequency.getByKey(preferences.get(MedtronicStringPreferenceKey.PumpFrequency))
             val rileyLinkAddress = preferences.get(RileyLinkStringPreferenceKey.MacAddress)
             if (rileyLinkAddress.isEmpty()) {
