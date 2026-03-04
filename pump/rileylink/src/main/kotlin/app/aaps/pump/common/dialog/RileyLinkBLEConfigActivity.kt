@@ -140,7 +140,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
     private fun updateSavedRileyLinksList(currentAddress: String?) {
         val devices = getSavedRileyLinks()
         if (devices.isEmpty()) {
-            binding.riley_link_ble_config_saved_rileylinks.text = rh.gs(R.string.riley_link_ble_config_no_riley_link_selected)
+            binding.rileyLinkBleConfigSavedRileylinks.text = rh.gs(R.string.riley_link_ble_config_no_riley_link_selected)
             return
         }
         val sb = StringBuilder()
@@ -153,7 +153,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
                 sb.append("• ").append(displayName).append(" (").append(addr).append(")")
             }
         }
-        binding.riley_link_ble_config_saved_rileylinks.text = sb.toString()
+        binding.rileyLinkBleConfigSavedRileylinks.text = sb.toString()
     }
 
     private fun getSavedRileyLinks(): MutableMap<String, String> {
