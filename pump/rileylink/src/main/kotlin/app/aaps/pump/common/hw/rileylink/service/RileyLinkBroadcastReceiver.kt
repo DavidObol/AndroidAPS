@@ -13,7 +13,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import dagger.android.AndroidInjection
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -89,11 +88,6 @@ class RileyLinkBroadcastReceiver : DaggerBroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        try {
-            AndroidInjection.inject(this)
-        } catch (_: Exception) {
-            // may already be injected
-        }
         val action = intent.action ?: return
         Thread {
             aapsLogger.debug(LTag.PUMPBTCOMM, "Received Broadcast: $action")
