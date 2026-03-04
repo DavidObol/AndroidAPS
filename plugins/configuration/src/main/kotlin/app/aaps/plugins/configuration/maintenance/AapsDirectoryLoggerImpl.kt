@@ -12,12 +12,11 @@ import app.aaps.core.keys.interfaces.Preferences
 import dagger.Reusable
 import org.joda.time.LocalDateTime
 import org.joda.time.format.DateTimeFormat
-import javax.inject.Inject
 
 private const val LOG_FILE_NAME = "aaps_events.log"
 
 @Reusable
-class AapsDirectoryLoggerImpl @Inject constructor(
+class AapsDirectoryLoggerImpl constructor(
     private val context: Context,
     private val fileListProvider: FileListProvider,
     private val preferences: Preferences,

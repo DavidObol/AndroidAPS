@@ -1,10 +1,13 @@
 package app.aaps.plugins.configuration.di
 
+import android.content.Context
 import app.aaps.core.interfaces.androidPermissions.AndroidPermission
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.logging.AapsDirectoryLogger
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.storage.Storage
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.plugins.configuration.AndroidPermissionImpl
 import app.aaps.plugins.configuration.activities.SingleFragmentActivity
@@ -21,6 +24,8 @@ import app.aaps.plugins.configuration.maintenance.activities.PrefImportListActiv
 import app.aaps.plugins.configuration.maintenance.formats.EncryptedPrefsFormat
 import dagger.Binds
 import dagger.Module
+import dagger.Provides
+import dagger.Reusable
 import dagger.android.ContributesAndroidInjector
 
 @Suppress("unused")
@@ -44,13 +49,25 @@ abstract class ConfigurationModule {
     @ContributesAndroidInjector abstract fun prefImportListProviderInjector(): FileListProvider
 
     @Module
-    interface Bindings {
+    abstract class Bindings {
 
-        @Binds fun bindAndroidPermissionInterface(androidPermission: AndroidPermissionImpl): AndroidPermission
-        @Binds fun bindAapsDirectoryLogger(impl: AapsDirectoryLoggerImpl): AapsDirectoryLogger
-        @Binds fun bindPrefFileListProvider(prefFileListProviderImpl: FileListProviderImpl): FileListProvider
-        @Binds fun bindRunningConfiguration(runningConfigurationImpl: RunningConfigurationImpl): RunningConfiguration
-        @Binds fun bindConfigBuilderInterface(configBuilderPlugin: ConfigBuilderPlugin): ConfigBuilder
-        @Binds fun bindImportExportPrefsInterface(importExportPrefs: ImportExportPrefsImpl): ImportExportPrefs
+        @Binds abstract fun bindAndroidPermissionInterface(androidPermission: AndroidPermissionImpl): AndroidPermission
+        @Binds abstract fun bindPrefFileListProvider(prefFileListProviderImpl: FileListProviderImpl): FileListProvider
+        @Binds abstract fun bindRunningConfiguration(runningConfigurationImpl: RunningConfigurationImpl): RunningConfiguration
+        @Binds abstract fun bindConfigBuilderInterface(configBuilderPlugin: ConfigBuilderPlugin): ConfigBuilder
+        @Binds abstract fun bindImportExportPrefsInterface(importExportPrefs: ImportExportPrefsImpl): ImportExportPrefs
+
+        companion object {
+            @JvmStatic
+            @Provides
+            @Reusable
+            fun provideAapsDirectoryLogger(
+                context: Context,
+                fileListProvider: FileListProvider,
+                preferences: Preferences,
+                storage: Storage,
+                aapsLogger: app.aaps.core.interfaces.logging.AAPSLogger
+            ): AapsDirectoryLogger = AapsDirectoryLoggerImpl(context, fileListProvider, preferences, storage, aapsLogger)
+        }
     }
 }
