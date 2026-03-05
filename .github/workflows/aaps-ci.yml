@@ -11,6 +11,8 @@ on:
         options:
           - fullRelease
           - fullDebug
+          - parallelRelease
+          - parallelDebug
           - aapsclientRelease
           - aapsclientDebug
           - aapsclient2Release
@@ -188,7 +190,8 @@ jobs:
 
       - name: Build APKs
         run: |
-              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} :wear:assemble${{ env.BUILD_VARIANT }} \
+          if [[ "${{ env.BUILD_VARIANT }}" == parallelRelease || "${{ env.BUILD_VARIANT }}" == parallelDebug ]]; then
+            ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
               -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
               -Dkotlin.daemon.jvm.options="-Xmx2g" \
               -Dkotlin.compiler.execution.strategy="in-process" \
@@ -199,11 +202,26 @@ jobs:
               -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
               -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
               -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          else
+            ./gradlew :app:assemble${{ env.BUILD_VARIANT }} :wear:assemble${{ env.BUILD_VARIANT }} \
+              -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
+              -Dkotlin.daemon.jvm.options="-Xmx2g" \
+              -Dkotlin.compiler.execution.strategy="in-process" \
+              -Dorg.gradle.daemon=true \
+              -Dorg.gradle.workers.max=8 \
+              -Dorg.gradle.caching=true \
+              -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
+              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          fi
 
       - name: Rename APKs with version
         run: |
           mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
-          mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          if [[ "${{ env.BUILD_VARIANT }}" != parallelRelease && "${{ env.BUILD_VARIANT }}" != parallelDebug ]]; then
+            mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          fi
 
       - name: Upload APKs to Google Drive
         run: |
@@ -286,6 +304,8 @@ jobs:
           }
 
           upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
-          upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
+          if [[ "${{ env.BUILD_VARIANT }}" != parallelRelease && "${{ env.BUILD_VARIANT }}" != parallelDebug ]]; then
+            upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
+          fi
 
           echo "🎉 APKs successfully uploaded to Google Drive!"

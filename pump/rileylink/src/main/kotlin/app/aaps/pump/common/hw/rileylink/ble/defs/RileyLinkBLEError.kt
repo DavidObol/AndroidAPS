@@ -9,5 +9,7 @@ enum class RileyLinkBLEError(val description: String) {
     Timeout("Timeout"),  //
     Interrupted("Interrupted"),
     NoResponse("No response from RileyLink"),
-    TooShortOrNullResponse("Too short or null decoded response.");
+    TooShortOrNullResponse("Too short or null decoded response."),
+    /** Response from different pump (address mismatch). Aligns with iAPS PumpOpsError.crosstalk */
+    Crosstalk("Response from different pump (address mismatch).");
 }

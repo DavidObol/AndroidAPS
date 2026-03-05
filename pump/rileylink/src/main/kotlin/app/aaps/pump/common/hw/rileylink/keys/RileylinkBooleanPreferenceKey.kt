@@ -19,4 +19,6 @@ enum class RileylinkBooleanPreferenceKey(
 
     OrangeUseScanning("pref_orange_use_scanning", false),
     ShowReportedBatteryLevel("pref_riley_link_show_reported_battery_level", false),
+    /** Log all RileyLink and Medtronic pump interaction to a file in AAPS directory for debugging */
+    MedtronicRileyLinkFileLogEnabled("pref_medtronic_rileylink_file_log_enabled", false),
 }

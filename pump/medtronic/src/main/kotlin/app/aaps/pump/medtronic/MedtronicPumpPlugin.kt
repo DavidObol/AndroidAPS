@@ -63,6 +63,7 @@ import app.aaps.pump.common.hw.rileylink.keys.RileyLinkLongKey
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringKey
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
 import app.aaps.pump.common.hw.rileylink.keys.RileylinkBooleanPreferenceKey
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import app.aaps.pump.common.hw.rileylink.service.tasks.ResetRileyLinkConfigurationTask
 import app.aaps.pump.common.hw.rileylink.service.tasks.ServiceTaskExecutor
@@ -132,7 +133,8 @@ class MedtronicPumpPlugin @Inject constructor(
     pumpSyncStorage: PumpSyncStorage,
     pumpEnactResultProvider: Provider<PumpEnactResult>,
     private val wakeAndTuneTaskProvider: Provider<WakeAndTuneTask>,
-    private val resetRileyLinkConfigurationTaskProvider: Provider<ResetRileyLinkConfigurationTask>
+    private val resetRileyLinkConfigurationTaskProvider: Provider<ResetRileyLinkConfigurationTask>,
+    private val fileLogger: MedtronicRileyLinkFileLogger
 ) : PumpPluginAbstract(
     pluginDescription = PluginDescription()
         .mainType(PluginType.PUMP)
@@ -325,6 +327,7 @@ class MedtronicPumpPlugin @Inject constructor(
     }
 
     override fun getPumpStatus(reason: String) {
+        fileLogger.logComm("getPumpStatus reason=$reason")
         var needRefresh = true
         if (firstRun) {
             needRefresh = initializePump()  /*!isRefresh*/

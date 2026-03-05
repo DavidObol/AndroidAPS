@@ -134,6 +134,15 @@ android {
             manifestPlaceholders["appIcon"] = "@mipmap/ic_blueowl"
             manifestPlaceholders["appIconRound"] = "@mipmap/ic_blueowl"
         }
+        // Установка параллельно с основным AAPS без удаления предыдущего (другой applicationId)
+        create("parallel") {
+            applicationId = "info.nightscout.androidaps.parallel"
+            dimension = "standard"
+            resValue("string", "app_name", "AAPS (parallel)")
+            versionName = Versions.appVersion + "-parallel"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
+        }
     }
 
     useLibrary("org.apache.http.legacy")

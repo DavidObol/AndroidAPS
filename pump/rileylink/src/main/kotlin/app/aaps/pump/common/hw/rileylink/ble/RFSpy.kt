@@ -11,6 +11,7 @@ import app.aaps.core.utils.pump.ByteUtil.concat
 import app.aaps.core.utils.pump.ByteUtil.shortHexString
 import app.aaps.core.utils.pump.ThreadUtil.sig
 import app.aaps.pump.common.hw.rileylink.RileyLinkUtil
+import app.aaps.pump.common.hw.rileylink.ble.command.ResetRadioConfig
 import app.aaps.pump.common.hw.rileylink.ble.command.RileyLinkCommand
 import app.aaps.pump.common.hw.rileylink.ble.command.SendAndListen
 import app.aaps.pump.common.hw.rileylink.ble.command.SetHardwareEncoding
@@ -27,7 +28,9 @@ import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersion
 import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkFirmwareVersionBase
 import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkTargetFrequency
 import app.aaps.pump.common.hw.rileylink.ble.operations.BLECommOperationResult
+import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import org.apache.commons.lang3.ArrayUtils
 import java.util.Locale
@@ -49,7 +52,8 @@ class RFSpy @Inject constructor(
     private val rileyLinkBle: RileyLinkBLE,
     private val rileyLinkServiceData: RileyLinkServiceData,
     private val rileyLinkUtil: RileyLinkUtil,
-    private val rfSpyResponseProvider: Provider<RFSpyResponse>
+    private val rfSpyResponseProvider: Provider<RFSpyResponse>,
+    private val fileLogger: MedtronicRileyLinkFileLogger
 ) {
 
     private val radioServiceUUID: UUID = UUID.fromString(GattAttributes.SERVICE_RADIO)
@@ -226,6 +230,9 @@ class RFSpy @Inject constructor(
         pkt: RadioPacket, sendChannel: Byte, repeatCount: Byte, delayMs: Byte,
         listenChannel: Byte, timeoutMs: Int, retryCount: Byte, extendPreambleMs: Int = 0
     ): RFSpyResponse? {
+        if (rileyLinkServiceData.targetDevice == RileyLinkTargetDevice.MedtronicPump) {
+            fileLogger.logComm("transmitThenReceive repeat=$repeatCount timeout=$timeoutMs retry=$retryCount")
+        }
         val sendDelay = repeatCount * delayMs
         val receiveDelay = timeoutMs * (retryCount + 1)
 
@@ -235,6 +242,16 @@ class RFSpy @Inject constructor(
         )
 
         val rfSpyResponse = writeToData(command, sendDelay + receiveDelay + EXPECTED_MAX_BLUETOOTH_LATENCY_MS)
+        if (rileyLinkServiceData.targetDevice == RileyLinkTargetDevice.MedtronicPump && rfSpyResponse != null) {
+            val outcome = when {
+                rfSpyResponse.wasTimeout() -> "timeout"
+                rfSpyResponse.wasInterrupted() -> "interrupted"
+                rfSpyResponse.wasNoResponseFromRileyLink() -> "noResponse"
+                rfSpyResponse.looksLikeRadioPacket() -> "ok"
+                else -> "other"
+            }
+            fileLogger.logComm("transmitThenReceive result=$outcome")
+        }
 
         if (System.currentTimeMillis() >= nextBatteryCheck) {
             updateBatteryLevel()
@@ -258,6 +275,9 @@ class RFSpy @Inject constructor(
     }
 
     fun setBaseFrequency(freqMHz: Double) {
+        if (rileyLinkServiceData.targetDevice == RileyLinkTargetDevice.MedtronicPump) {
+            fileLogger.logComm("setBaseFrequency $freqMHz MHz")
+        }
         val value = (freqMHz * 1000000 / ((RILEYLINK_FREQ_XTAL).toDouble() / 2.0.pow(16.0))).toInt()
         updateRegister(CC111XRegister.freq0, (value and 0xff).toByte().toInt())
         updateRegister(CC111XRegister.freq1, ((value shr 8) and 0xff).toByte().toInt())
@@ -275,6 +295,7 @@ class RFSpy @Inject constructor(
 
         when (frequency) {
             RileyLinkTargetFrequency.MedtronicWorldWide -> {
+                resetRadioConfig()
                 setRXFilterMode(RXFilterMode.Wide)
                 updateRegister(CC111XRegister.mdmcfg1, 0x62)
                 updateRegister(CC111XRegister.mdmcfg0, 0x1A)
@@ -283,6 +304,7 @@ class RFSpy @Inject constructor(
             }
 
             RileyLinkTargetFrequency.MedtronicUS        -> {
+                resetRadioConfig()
                 setRXFilterMode(RXFilterMode.Narrow)
                 updateRegister(CC111XRegister.mdmcfg1, 0x61)
                 updateRegister(CC111XRegister.mdmcfg0, 0x7E)
@@ -367,9 +389,25 @@ class RFSpy @Inject constructor(
     }
 
     /**
-     * Reset RileyLink Configuration (set all updateRegisters)
+     * Send ResetRadioConfig command to RileyLink (firmware 2.x+ only).
+     * Aligns with iAPS: call before configureRadio(for:frequency).
+     */
+    fun resetRadioConfig(): RFSpyResponse? {
+        if (rileyLinkServiceData.targetDevice == RileyLinkTargetDevice.MedtronicPump) {
+            fileLogger.logComm("resetRadioConfig")
+        }
+        if (rileyLinkServiceData.firmwareVersion?.isSameVersion(RileyLinkFirmwareVersion.Version2AndHigher) != true) {
+            aapsLogger.debug(LTag.PUMPBTCOMM, "Skipping ResetRadioConfig: firmware does not support it")
+            return null
+        }
+        return writeToData(ResetRadioConfig(), EXPECTED_MAX_BLUETOOTH_LATENCY_MS)
+    }
+
+    /**
+     * Reset RileyLink Configuration (reset radio config then re-apply frequency/region)
      */
     fun resetRileyLinkConfiguration() {
+        resetRadioConfig()
         currentFrequencyMHz?.let { setBaseFrequency(it) }
     }
 

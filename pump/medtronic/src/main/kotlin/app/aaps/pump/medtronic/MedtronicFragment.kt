@@ -33,6 +33,7 @@ import app.aaps.pump.common.extensions.stringResource
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkServiceState
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.common.hw.rileylink.dialog.RileyLinkStatusActivity
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import app.aaps.pump.medtronic.databinding.MedtronicFragmentBinding
 import app.aaps.pump.medtronic.defs.BatteryType
@@ -64,6 +65,7 @@ class MedtronicFragment : DaggerFragment() {
     @Inject lateinit var rileyLinkServiceData: RileyLinkServiceData
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var pumpSync: PumpSync
+    @Inject lateinit var fileLogger: MedtronicRileyLinkFileLogger
 
     private var disposable: CompositeDisposable = CompositeDisposable()
 
@@ -84,10 +86,14 @@ class MedtronicFragment : DaggerFragment() {
     private val binding get() = _binding!!
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
-        MedtronicFragmentBinding.inflate(inflater, container, false).also { _binding = it }.root
+        MedtronicFragmentBinding.inflate(inflater, container, false).also {
+            _binding = it
+            fileLogger.logUi("MedtronicFragment onCreateView")
+        }.root
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        fileLogger.logUi("MedtronicFragment onViewCreated")
 
         binding.rlStatus.text = rh.gs(RileyLinkServiceState.NotStarted.resourceId)
 
@@ -96,6 +102,7 @@ class MedtronicFragment : DaggerFragment() {
         binding.pumpStatusIcon.text = "{fa-bed}"
 
         binding.history.setOnClickListener {
+            fileLogger.logUi("MedtronicFragment button History")
             if (medtronicPumpPlugin.rileyLinkService?.verifyConfiguration() == true) {
                 startActivity(Intent(context, MedtronicHistoryActivity::class.java))
             } else {
@@ -104,6 +111,7 @@ class MedtronicFragment : DaggerFragment() {
         }
 
         binding.refresh.setOnClickListener {
+            fileLogger.logUi("MedtronicFragment button Refresh")
             if (medtronicPumpPlugin.rileyLinkService?.verifyConfiguration() != true) {
                 displayNotConfiguredDialog()
             } else {
@@ -118,6 +126,7 @@ class MedtronicFragment : DaggerFragment() {
         }
 
         binding.stats.setOnClickListener {
+            fileLogger.logUi("MedtronicFragment button Riley Statistics")
             if (medtronicPumpPlugin.rileyLinkService?.verifyConfiguration() == true) {
                 startActivity(Intent(context, RileyLinkStatusActivity::class.java))
             } else {
@@ -129,6 +138,7 @@ class MedtronicFragment : DaggerFragment() {
     @Synchronized
     override fun onResume() {
         super.onResume()
+        fileLogger.logUi("MedtronicFragment onResume")
         handler.postDelayed(refreshLoop, T.mins(1).msecs())
         disposable += rxBus
             .toObservable(EventRefreshButtonState::class.java)
