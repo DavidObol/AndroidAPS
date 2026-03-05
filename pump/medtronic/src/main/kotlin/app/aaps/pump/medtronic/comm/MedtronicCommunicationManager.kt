@@ -12,7 +12,9 @@ import app.aaps.core.utils.pump.ByteUtil
 import app.aaps.pump.common.hw.rileylink.RileyLinkCommunicationManager
 import app.aaps.pump.common.hw.rileylink.RileyLinkUtil
 import app.aaps.pump.common.hw.rileylink.ble.RFSpy
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import app.aaps.pump.common.hw.rileylink.ble.RileyLinkCommunicationException
+import app.aaps.pump.common.hw.rileylink.ble.defs.RileyLinkBLEError
 import app.aaps.pump.common.hw.rileylink.ble.data.RadioPacket
 import app.aaps.pump.common.hw.rileylink.ble.data.RadioResponse
 import app.aaps.pump.common.hw.rileylink.ble.defs.RLMessageType
@@ -67,6 +69,7 @@ class MedtronicCommunicationManager @Inject constructor(
     private val medtronicConverter: MedtronicConverter,
     private val medtronicUtil: MedtronicUtil,
     private val medtronicPumpHistoryDecoder: MedtronicPumpHistoryDecoder,
+    private val fileLogger: MedtronicRileyLinkFileLogger,
     aapsLogger: AAPSLogger,
     preferences: Preferences,
     rileyLinkServiceData: RileyLinkServiceData,
@@ -84,7 +87,30 @@ class MedtronicCommunicationManager @Inject constructor(
 
         private const val MAX_COMMAND_TRIES = 3
         private const val DEFAULT_TIMEOUT = 2000
+        /** Aligns with iAPS standardPumpResponseWindow (200ms) for short responses */
+        private const val STANDARD_PUMP_RESPONSE_TIMEOUT_MS = 2000
         private const val RILEYLINK_TIMEOUT: Long = 15 * 60 * 1000L // 15 min
+
+        /**
+         * Send/listen parameters per command type (aligns with iAPS repeatCount, timeout, retryCount).
+         * Returns Triple(timeoutMs, repeatCount, retryCount).
+         */
+        private fun getSendListenParams(commandType: MedtronicCommandType): Triple<Int, Int, Int> =
+            when (commandType) {
+                MedtronicCommandType.PumpModel -> Triple(STANDARD_PUMP_RESPONSE_TIMEOUT_MS, 0, 1)
+                MedtronicCommandType.GetBatteryStatus,
+                MedtronicCommandType.GetRemainingInsulin,
+                MedtronicCommandType.GetRealTimeClock,
+                MedtronicCommandType.ReadTemporaryBasal -> Triple(STANDARD_PUMP_RESPONSE_TIMEOUT_MS, 0, 1)
+                MedtronicCommandType.GetHistoryData -> Triple(4000, 0, 1)
+                MedtronicCommandType.GetBasalProfileSTD,
+                MedtronicCommandType.GetBasalProfileA,
+                MedtronicCommandType.GetBasalProfileB -> Triple(4000, 0, 1)
+                MedtronicCommandType.SetBolus,
+                MedtronicCommandType.SetTemporaryBasal,
+                MedtronicCommandType.SetRealTimeClock -> Triple(4000, 0, 1)
+                else -> Triple(DEFAULT_TIMEOUT, 0, 1)
+            }
     }
 
     var errorResponse: String? = null
@@ -100,6 +126,35 @@ class MedtronicCommunicationManager @Inject constructor(
 
     override fun createResponseMessage(payload: ByteArray): PumpMessage {
         return PumpMessage(aapsLogger, payload)
+    }
+
+    /**
+     * Check crosstalk: response must be from our pump (address matches pumpIDBytes).
+     * Aligns with iAPS: response.address == message.address.
+     */
+    override fun wakeUp(durationMinutes: Int, force: Boolean) {
+        fileLogger.logComm("wakeUp force=$force")
+        super.wakeUp(durationMinutes, force)
+    }
+
+    @Throws(RileyLinkCommunicationException::class)
+    override fun sendAndListen(msg: PumpMessage, timeoutMs: Int, repeatCount: Int, retryCount: Int, extendPreambleMs: Int): PumpMessage {
+        fileLogger.logComm("send repeat=$repeatCount timeout=$timeoutMs retry=$retryCount")
+        return try {
+            val response = super.sendAndListen(msg, timeoutMs, repeatCount, retryCount, extendPreambleMs)
+            if (response.isValid() && response.address != null && rileyLinkServiceData.pumpIDBytes.size == 3) {
+                if (!response.address!!.contentEquals(rileyLinkServiceData.pumpIDBytes)) {
+                    fileLogger.logError("crosstalk: response address != pump ID")
+                    aapsLogger.warn(LTag.PUMPCOMM, "Crosstalk: response address does not match pump ID")
+                    throw RileyLinkCommunicationException(RileyLinkBLEError.Crosstalk, null)
+                }
+            }
+            fileLogger.logComm("result=ok")
+            response
+        } catch (e: RileyLinkCommunicationException) {
+            fileLogger.logError("result=${e.error?.name ?: "unknown"} ${e.message ?: ""}")
+            throw e
+        }
     }
 
     override fun setPumpDeviceState(pumpDeviceState: PumpDeviceState) {
@@ -140,14 +195,16 @@ class MedtronicCommunicationManager @Inject constructor(
     }
 
     private fun connectToDevice(): Boolean {
+        fileLogger.logComm("connectToDevice start")
         val state = medtronicPumpStatus.pumpDeviceState
 
-        // check connection
-        val pumpMsgContent = createPumpMessageContent(RLMessageType.ReadSimpleData) // simple
+        // Wake with PowerOn (aligns with iAPS), then verify with GetPumpModel
+        wakeUp(receiverDeviceAwakeForMinutes, false)
+        val pumpMsgContent = createPumpMessageContent(RLMessageType.ReadSimpleData) // GetPumpModel
         val rfSpyResponse = rfspy.transmitThenReceive(
-            RadioPacket(rileyLinkUtil, pumpMsgContent), 0.toByte(), 200.toByte(), 0.toByte(), 0.toByte(), 25000, 0.toByte()
+            RadioPacket(rileyLinkUtil, pumpMsgContent), 0.toByte(), 0.toByte(), 0.toByte(), 0.toByte(), 4000, 0.toByte()
         )
-        aapsLogger.info(LTag.PUMPCOMM, "wakeup: raw response is " + ByteUtil.shortHexString(rfSpyResponse?.raw))
+        aapsLogger.info(LTag.PUMPCOMM, "connectToDevice GetPumpModel: raw response is " + ByteUtil.shortHexString(rfSpyResponse?.raw))
         if (rfSpyResponse?.wasTimeout() == true) {
             aapsLogger.error(LTag.PUMPCOMM, "isDeviceReachable. Failed to find pump (timeout).")
         } else if (rfSpyResponse?.looksLikeRadioPacket() == true) {
@@ -180,6 +237,7 @@ class MedtronicCommunicationManager @Inject constructor(
                             )
                         )
                         if (valid) {
+                            fileLogger.logComm("connectToDevice success")
                             if (state === PumpDeviceState.PumpUnreachable)
                                 medtronicPumpStatus.pumpDeviceState = PumpDeviceState.WakingUp
                             else
@@ -205,6 +263,7 @@ class MedtronicCommunicationManager @Inject constructor(
         } else {
             aapsLogger.warn(LTag.PUMPCOMM, "isDeviceReachable. Unknown response: " + ByteUtil.shortHexString(rfSpyResponse?.raw))
         }
+        fileLogger.logComm("connectToDevice fail")
         return false
     }
 
@@ -429,6 +488,7 @@ class MedtronicCommunicationManager @Inject constructor(
      */
     @Throws(RileyLinkCommunicationException::class)
     private fun sendAndGetResponse(commandType: MedtronicCommandType, bodyData: ByteArray? = null, timeoutMs: Int = DEFAULT_TIMEOUT): PumpMessage {
+        fileLogger.logComm("op=sendAndGetResponse cmd=$commandType")
         // wakeUp
         if (doWakeUpBeforeCommand) wakeUp(receiverDeviceAwakeForMinutes, false)
         medtronicPumpStatus.pumpDeviceState = PumpDeviceState.Active
@@ -436,15 +496,15 @@ class MedtronicCommunicationManager @Inject constructor(
         // create message
         val msg: PumpMessage = bodyData?.let { makePumpMessage(commandType, it) } ?: makePumpMessage(commandType)
 
-        // send and wait for response
-        val response = sendAndListen(msg, timeoutMs)
+        val (cmdTimeout, repeatCount, retryCount) = getSendListenParams(commandType)
+        val response = sendAndListen(msg, timeoutMs.coerceAtLeast(cmdTimeout), repeatCount, retryCount)
         medtronicPumpStatus.pumpDeviceState = PumpDeviceState.Sleeping
         return response
     }
 
     @Throws(RileyLinkCommunicationException::class)
     private fun sendAndListen(msg: PumpMessage): PumpMessage {
-        return sendAndListen(msg, 4000) // 2000
+        return sendAndListen(msg, 4000, 0, 0)
     }
 
     private inline fun <reified T> sendAndGetResponseWithCheck(

@@ -45,6 +45,9 @@ abstract class RileyLinkCommunicationManager<T : RLMessage>(
     @Suppress("PrivatePropertyName")
     private val ALLOWED_PUMP_UNREACHABLE = 10 * 60 * 1000 // 10 minutes
 
+    /** Minimum interval between wake attempts (aligns with iAPS minimumTimeBetweenWakeAttempts = 1 min) */
+    private val MINIMUM_TIME_BETWEEN_WAKE_ATTEMPTS_MS = 60 * 1000L
+
     protected var receiverDeviceAwakeForMinutes: Int = 1 // override this in constructor of specific implementation
     protected var receiverDeviceID: String? = null // String representation of receiver device (ex. Pump (xxxxxx) or Pod (yyyyyy))
     protected var lastGoodReceiverCommunicationTime: Long = 0
@@ -130,45 +133,31 @@ abstract class RileyLinkCommunicationManager<T : RLMessage>(
         return rfspy.notConnectedCount
     }
 
-    // FIXME change wakeup
-    // TODO we might need to fix this. Maybe make pump awake for shorter time (battery factor for pump) - Andy
+    /**
+     * Wake pump using PowerOn (0x5d), aligned with iAPS sendWakeUpBurst:
+     * - Not more often than once per minute (minimumTimeBetweenWakeAttempts).
+     * - PowerOn message, repeatCount 255, timeout 12s, retryCount 0.
+     */
     fun wakeUp(@Suppress("unused") durationMinutes: Int, force: Boolean) {
-        // If it has been longer than n minutes, do wakeup. Otherwise assume pump is still awake.
-        // **** FIXME: this wakeup doesn't seem to work well... must revisit
-        // receiverDeviceAwakeForMinutes = duration_minutes;
-
         setPumpDeviceState(PumpDeviceState.WakingUp)
 
         if (force) nextWakeUpRequired = 0L
 
-        if (System.currentTimeMillis() > nextWakeUpRequired) {
-            aapsLogger.info(LTag.PUMPBTCOMM, "Waking pump...")
-
-            val pumpMsgContent = createPumpMessageContent(RLMessageType.ReadSimpleData) // simple
-            val resp = rfspy.transmitThenReceive(
-                RadioPacket(rileyLinkUtil, pumpMsgContent), 0.toByte(), 200.toByte(),
-                0.toByte(), 0.toByte(), 25000, 0.toByte()
-            )
-            aapsLogger.info(LTag.PUMPBTCOMM, "wakeup: raw response is " + shortHexString(resp?.raw))
-
-            // FIXME wakeUp successful !!!!!!!!!!!!!!!!!!
-            nextWakeUpRequired = System.currentTimeMillis() + (receiverDeviceAwakeForMinutes.toLong() * 60 * 1000)
-        } else {
+        val now = System.currentTimeMillis()
+        if (now <= nextWakeUpRequired) {
             aapsLogger.debug(LTag.PUMPBTCOMM, "Last pump communication was recent, not waking pump.")
+            return
         }
 
-        // long lastGoodPlus = getLastGoodReceiverCommunicationTime() + (receiverDeviceAwakeForMinutes * 60 * 1000);
-        //
-        // if (System.currentTimeMillis() > lastGoodPlus || force) {
-        // LOG.info("Waking pump...");
-        //
-        // byte[] pumpMsgContent = createPumpMessageContent(RLMessageType.PowerOn);
-        // RFSpyResponse resp = rfspy.transmitThenReceive(new RadioPacket(pumpMsgContent), (byte) 0, (byte) 200, (byte)
-        // 0, (byte) 0, 15000, (byte) 0);
-        // LOG.info("wakeup: raw response is " + ByteUtil.INSTANCE.shortHexString(resp.getRaw()));
-        // } else {
-        // LOG.trace("Last pump communication was recent, not waking pump.");
-        // }
+        aapsLogger.info(LTag.PUMPBTCOMM, "Waking pump (PowerOn)...")
+        val pumpMsgContent = createPumpMessageContent(RLMessageType.PowerOn)
+        val resp = rfspy.transmitThenReceive(
+            RadioPacket(rileyLinkUtil, pumpMsgContent), 0.toByte(), 255.toByte(),
+            0.toByte(), 0.toByte(), 12000, 0.toByte()
+        )
+        aapsLogger.info(LTag.PUMPBTCOMM, "wakeup: raw response is " + shortHexString(resp?.raw))
+
+        nextWakeUpRequired = System.currentTimeMillis() + MINIMUM_TIME_BETWEEN_WAKE_ATTEMPTS_MS.coerceAtLeast(receiverDeviceAwakeForMinutes * 60 * 1000L)
     }
 
     fun setRadioFrequencyForPump(freqMHz: Double) {

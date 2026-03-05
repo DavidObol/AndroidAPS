@@ -13,6 +13,7 @@ import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusGeneralBindi
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkTargetDevice
 import app.aaps.pump.common.hw.rileylink.keys.RileylinkBooleanPreferenceKey
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import app.aaps.pump.common.hw.rileylink.service.RileyLinkServiceData
 import dagger.android.support.DaggerFragment
 import javax.inject.Inject
@@ -24,6 +25,7 @@ class RileyLinkStatusGeneralFragment : DaggerFragment() {
     @Inject lateinit var rileyLinkServiceData: RileyLinkServiceData
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var fileLogger: MedtronicRileyLinkFileLogger
 
     private var _binding: RileylinkStatusGeneralBinding? = null
 
@@ -35,12 +37,16 @@ class RileyLinkStatusGeneralFragment : DaggerFragment() {
 
     override fun onResume() {
         super.onResume()
+        fileLogger.logUi("RileyLinkStatusGeneralFragment onResume")
         refreshData()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.refresh.setOnClickListener { refreshData() }
+        binding.refresh.setOnClickListener {
+            fileLogger.logUi("RileyLinkStatusGeneralFragment button Refresh")
+            refreshData()
+        }
     }
 
     override fun onDestroyView() {

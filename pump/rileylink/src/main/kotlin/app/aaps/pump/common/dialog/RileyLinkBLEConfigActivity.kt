@@ -40,6 +40,7 @@ import app.aaps.pump.common.hw.rileylink.databinding.RileyLinkBleConfigActivityB
 import app.aaps.pump.common.hw.rileylink.defs.RileyLinkPumpDevice
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringKey
 import app.aaps.pump.common.hw.rileylink.keys.RileyLinkStringPreferenceKey
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import org.apache.commons.lang3.StringUtils
 import java.util.Locale
 import javax.inject.Inject
@@ -54,6 +55,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
     @Inject lateinit var context: Context
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var aapsLogger: AAPSLogger
+    @Inject lateinit var fileLogger: MedtronicRileyLinkFileLogger
 
     private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
     private val bluetoothAdapter: BluetoothAdapter? get() = (context.getSystemService(BLUETOOTH_SERVICE) as BluetoothManager?)?.adapter
@@ -73,6 +75,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
     public override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        fileLogger.logUi("RileyLinkBLEConfigActivity opened")
         binding = RileyLinkBleConfigActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -88,6 +91,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
             val bleAddress = view.findViewById<TextView>(R.id.riley_link_ble_config_scan_item_device_address)?.text.toString()
             val deviceName = view.findViewById<TextView>(R.id.riley_link_ble_config_scan_item_device_name)?.text.toString()
+            fileLogger.logUi("RileyLinkBLEConfigActivity device selected address=$bleAddress name=$deviceName")
             preferences.put(RileyLinkStringPreferenceKey.MacAddress, bleAddress)
             preferences.put(RileyLinkStringKey.Name, deviceName)
             val rileyLinkPump = activePlugin.activePump as RileyLinkPumpDevice
@@ -96,17 +100,20 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
             finish()
         }
         binding.rileyLinkBleConfigScanStart.setOnClickListener {
+            fileLogger.logUi("RileyLinkBLEConfigActivity button Scan")
             // disable currently selected RL, so that we can discover it
             rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkDisconnect)
             startLeDeviceScan()
         }
         binding.rileyLinkBleConfigButtonScanStop.setOnClickListener {
+            fileLogger.logUi("RileyLinkBLEConfigActivity button Scan Stop")
             if (scanning) {
                 stopLeDeviceScan()
                 rileyLinkUtil.sendBroadcastMessage(RileyLinkConst.Intents.RileyLinkNewAddressSet) // Reconnect current RL
             }
         }
         binding.rileyLinkBleConfigButtonRemoveRileyLink.setOnClickListener {
+            fileLogger.logUi("RileyLinkBLEConfigActivity button Remove RileyLink")
             OKDialog.showConfirmation(
                 this@RileyLinkBLEConfigActivity,
                 rh.gs(R.string.riley_link_ble_config_remove_riley_link_confirmation_title),
@@ -219,6 +226,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
     }
 
     private fun startLeDeviceScan() {
+        fileLogger.logUi("RileyLinkBLEConfigActivity startLeDeviceScan")
         if (bleScanner == null) {
             aapsLogger.error(LTag.PUMPBTCOMM, "startLeDeviceScan failed: bleScanner is null")
             return
@@ -242,6 +250,7 @@ class RileyLinkBLEConfigActivity : TranslatedDaggerAppCompatActivity() {
 
     private fun stopLeDeviceScan() {
         if (scanning) {
+            fileLogger.logUi("RileyLinkBLEConfigActivity stopLeDeviceScan")
             scanning = false
             if (bluetoothAdapter?.isEnabled == true && bluetoothAdapter?.state == BluetoothAdapter.STATE_ON)
                 if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {

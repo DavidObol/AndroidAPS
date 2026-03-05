@@ -8,12 +8,14 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.pump.common.hw.rileylink.R
 import app.aaps.pump.common.hw.rileylink.databinding.RileylinkStatusBinding
+import app.aaps.pump.common.hw.rileylink.logging.MedtronicRileyLinkFileLogger
 import com.google.android.material.tabs.TabLayoutMediator
 import javax.inject.Inject
 
 class RileyLinkStatusActivity : TranslatedDaggerAppCompatActivity() {
 
     @Inject lateinit var rh: ResourceHelper
+    @Inject lateinit var fileLogger: MedtronicRileyLinkFileLogger
 
     private lateinit var binding: RileylinkStatusBinding
 
@@ -21,6 +23,7 @@ class RileyLinkStatusActivity : TranslatedDaggerAppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        fileLogger.logUi("RileyLinkStatusActivity opened")
         binding = RileylinkStatusBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
