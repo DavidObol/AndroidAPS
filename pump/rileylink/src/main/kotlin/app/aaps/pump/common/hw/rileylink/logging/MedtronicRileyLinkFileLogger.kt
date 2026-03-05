@@ -25,13 +25,16 @@ class MedtronicRileyLinkFileLogger @Inject constructor(
     private val preferences: Preferences
 ) {
     private val lock = Any()
-    private const val LOG_FILE_NAME = "medtronic_rileylink.log"
-    private const val MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 // 2 MB
 
     private fun aapsDirectory(): File =
         File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "AAPS")
 
     private fun logFile(): File = File(aapsDirectory(), LOG_FILE_NAME)
+
+    companion object {
+        private const val LOG_FILE_NAME = "medtronic_rileylink.log"
+        private const val MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 // 2 MB
+    }
 
     private fun isEnabled(): Boolean = preferences.get(RileylinkBooleanPreferenceKey.MedtronicRileyLinkFileLogEnabled)
 
