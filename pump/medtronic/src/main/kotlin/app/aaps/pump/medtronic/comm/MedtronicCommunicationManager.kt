@@ -152,7 +152,7 @@ class MedtronicCommunicationManager @Inject constructor(
             fileLogger.logComm("result=ok")
             response
         } catch (e: RileyLinkCommunicationException) {
-            fileLogger.logError("result=${e.error?.name ?: "unknown"} ${e.message ?: ""}")
+            fileLogger.logError("result=${e.errorCode.name} ${e.message ?: ""}")
             throw e
         }
     }

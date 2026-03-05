@@ -138,7 +138,7 @@ abstract class RileyLinkCommunicationManager<T : RLMessage>(
      * - Not more often than once per minute (minimumTimeBetweenWakeAttempts).
      * - PowerOn message, repeatCount 255, timeout 12s, retryCount 0.
      */
-    fun wakeUp(@Suppress("unused") durationMinutes: Int, force: Boolean) {
+    open fun wakeUp(@Suppress("unused") durationMinutes: Int, force: Boolean) {
         setPumpDeviceState(PumpDeviceState.WakingUp)
 
         if (force) nextWakeUpRequired = 0L
