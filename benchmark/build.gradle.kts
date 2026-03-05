@@ -32,6 +32,7 @@ android {
         create("pumpcontrol") { dimension = "standard" }
         create("aapsclient") { dimension = "standard" }
         create("aapsclient2") { dimension = "standard" }
+        create("parallel") { dimension = "standard" }
     }
 
     compileOptions {

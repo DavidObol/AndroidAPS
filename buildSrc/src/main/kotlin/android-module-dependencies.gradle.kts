@@ -56,6 +56,9 @@ android {
         create("aapsclient2") {
             dimension = "standard"
         }
+        create("parallel") {
+            dimension = "standard"
+        }
     }
 
     buildFeatures {
